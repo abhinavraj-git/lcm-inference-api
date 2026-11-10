@@ -1,0 +1,48 @@
+import os
+
+os.environ["ENGINE"] = "mock"  # tests never load the real model
+
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_health():
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
+
+
+def test_generate_returns_png():
+    r = client.post(
+        "/generate", json={"prompt": "a red lighthouse", "steps": 4, "seed": 1}
+    )
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content[:8] == b"\x89PNG\r\n\x1a\n"
+    assert r.headers["x-engine"] == "mock"
+
+
+def test_same_seed_gives_same_image():
+    body = {"prompt": "a red lighthouse", "steps": 2, "seed": 7}
+    assert (
+        client.post("/generate", json=body).content
+        == client.post("/generate", json=body).content
+    )
+
+
+def test_rejects_invalid_steps():
+    r = client.post("/generate", json={"prompt": "x", "steps": 3, "seed": 1})
+    assert r.status_code == 422
+
+
+def test_rejects_empty_prompt():
+    r = client.post("/generate", json={"prompt": "", "steps": 4, "seed": 1})
+    assert r.status_code == 422
+
+
+def test_rejects_too_long_prompt():
+    r = client.post("/generate", json={"prompt": "a" * 201, "steps": 4, "seed": 1})
+    assert r.status_code == 422
