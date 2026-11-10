@@ -85,3 +85,13 @@ def test_api_key_required_when_configured(monkeypatch):
     assert no_key.status_code == 401
     assert wrong_key.status_code == 401
     assert right_key.status_code == 200
+
+
+def test_jobs_return_503_without_redis():
+    body = {"prompt": "job test prompt", "steps": 1, "seed": 3}
+
+    created = client.post("/jobs", json=body)
+    fetched = client.get("/jobs/some-id")
+
+    assert created.status_code == 503
+    assert fetched.status_code == 503
