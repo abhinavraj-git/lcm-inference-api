@@ -6,4 +6,11 @@ services:
       - "8000:8000"
     environment:
       ENGINE: ${ENGINE:-mock}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
     restart: unless-stopped
