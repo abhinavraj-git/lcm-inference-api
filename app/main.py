@@ -5,15 +5,18 @@ from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 from app.auth import require_api_key
 from app.cache import get_cache, make_key
 from app.engine import get_engine
-from app.ratelimit import get_limiter
 from app.jobs import enqueue, get_queue
+from app.metrics import CACHE_RESULTS, track_requests
+from app.ratelimit import get_limiter
 
 app = FastAPI(title="LCM Image API")
+app.middleware("http")(track_requests)
 
 
 class GenerateRequest(BaseModel):
@@ -43,12 +46,14 @@ def generate(req: GenerateRequest, request: Request):
 
     cached = cache.get(key)
     if cached is not None:
+        CACHE_RESULTS.labels("hit").inc()
         return Response(
             content=cached,
             media_type="image/png",
             headers={"X-Cache": "HIT", "X-Generation-Ms": "0"},
         )
 
+    CACHE_RESULTS.labels("miss").inc()
     engine = get_engine()
     start = time.perf_counter()
     image = engine.generate(req.prompt, req.steps, req.seed)
@@ -108,3 +113,8 @@ def get_job(job_id: str):
     if status == "failed":
         return {"job_id": job_id, "status": "failed"}
     return {"job_id": job_id, "status": status}
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
