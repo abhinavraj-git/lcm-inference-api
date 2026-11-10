@@ -9,4 +9,5 @@ fastapi==0.162.2
 uvicorn[standard]==0.54.0
 pydantic==2.14.3
 pillow==13.0.0
-redis==5.2.1
+redis==5.2.1 
+rq==2.1.0

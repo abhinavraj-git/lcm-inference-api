@@ -3,7 +3,7 @@ import os
 import time
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -11,6 +11,7 @@ from app.auth import require_api_key
 from app.cache import get_cache, make_key
 from app.engine import get_engine
 from app.ratelimit import get_limiter
+from app.jobs import enqueue, get_queue
 
 app = FastAPI(title="LCM Image API")
 
@@ -67,3 +68,43 @@ def generate(req: GenerateRequest, request: Request):
             "X-Cache": "MISS",
         },
     )
+
+
+@app.post("/jobs", status_code=202, dependencies=[Depends(require_api_key)])
+def create_job(req: GenerateRequest, request: Request):
+    client_id = request.client.host if request.client else "unknown"
+    if not get_limiter().allow(client_id):
+        return Response(
+            content='{"detail":"Rate limit exceeded. Try again in a minute."}',
+            media_type="application/json",
+            status_code=429,
+            headers={"Retry-After": "60"},
+        )
+    if get_queue() is None:
+        raise HTTPException(status_code=503, detail="Job queue unavailable (no Redis)")
+    job_id = enqueue(req.prompt, req.steps, req.seed)
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/jobs/{job_id}", dependencies=[Depends(require_api_key)])
+def get_job(job_id: str):
+    queue = get_queue()
+    if queue is None:
+        raise HTTPException(status_code=503, detail="Job queue unavailable (no Redis)")
+    from rq.exceptions import NoSuchJobError
+    from rq.job import Job
+
+    try:
+        job = Job.fetch(job_id, connection=queue.connection)
+    except NoSuchJobError:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    status = job.get_status()
+    if status == "finished":
+        cached = get_cache().get(job.result)
+        if cached is None:
+            raise HTTPException(status_code=410, detail="Result expired")
+        return Response(content=cached, media_type="image/png")
+    if status == "failed":
+        return {"job_id": job_id, "status": "failed"}
+    return {"job_id": job_id, "status": status}

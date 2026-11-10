@@ -11,6 +11,17 @@ services:
       - redis
     restart: unless-stopped
 
+  worker:
+    image: lcm-image-api
+    command: ["rq", "worker", "images", "--url", "redis://redis:6379/0"]
+    environment:
+      ENGINE: ${ENGINE:-mock}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+      - api
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
