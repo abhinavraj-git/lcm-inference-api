@@ -1,0 +1,9 @@
+.venv
+.git
+adapter
+__pycache__
+.pytest_cache
+notebooks
+tests
+smoke_test.png
+try_real_model.py
