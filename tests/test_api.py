@@ -72,3 +72,16 @@ def test_rate_limit_returns_429(monkeypatch):
 
     ratelimit.get_limiter.cache_clear()  # don't leave the low limit behind
     assert codes == [200, 200, 200, 429, 429]
+
+
+def test_api_key_required_when_configured(monkeypatch):
+    monkeypatch.setenv("API_KEY", "secret123")
+    body = {"prompt": "auth test prompt", "steps": 1, "seed": 99}
+
+    no_key = client.post("/generate", json=body)
+    wrong_key = client.post("/generate", json=body, headers={"X-API-Key": "nope"})
+    right_key = client.post("/generate", json=body, headers={"X-API-Key": "secret123"})
+
+    assert no_key.status_code == 401
+    assert wrong_key.status_code == 401
+    assert right_key.status_code == 200

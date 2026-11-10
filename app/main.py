@@ -3,14 +3,14 @@ import os
 import time
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from app.cache import get_cache, make_key
-from fastapi import Request
-from app.ratelimit import get_limiter
 
+from app.auth import require_api_key
+from app.cache import get_cache, make_key
 from app.engine import get_engine
+from app.ratelimit import get_limiter
 
 app = FastAPI(title="LCM Image API")
 
@@ -26,7 +26,7 @@ def health():
     return {"status": "ok", "engine": os.getenv("ENGINE", "mock")}
 
 
-@app.post("/generate", response_class=Response)
+@app.post("/generate", response_class=Response, dependencies=[Depends(require_api_key)])
 def generate(req: GenerateRequest, request: Request):
     client_id = request.client.host if request.client else "unknown"
     if not get_limiter().allow(client_id):
