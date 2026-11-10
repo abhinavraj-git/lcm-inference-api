@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import FastAPI
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from app.cache import get_cache, make_key
 
 from app.engine import get_engine
 
@@ -25,6 +26,17 @@ def health():
 
 @app.post("/generate", response_class=Response)
 def generate(req: GenerateRequest):
+    cache = get_cache()
+    key = make_key(req.prompt, req.steps, req.seed)
+
+    cached = cache.get(key)
+    if cached is not None:
+        return Response(
+            content=cached,
+            media_type="image/png",
+            headers={"X-Cache": "HIT", "X-Generation-Ms": "0"},
+        )
+
     engine = get_engine()
     start = time.perf_counter()
     image = engine.generate(req.prompt, req.steps, req.seed)
@@ -32,8 +44,15 @@ def generate(req: GenerateRequest):
 
     buf = io.BytesIO()
     image.save(buf, format="PNG")
+    png = buf.getvalue()
+    cache.set(key, png)
+
     return Response(
-        content=buf.getvalue(),
+        content=png,
         media_type="image/png",
-        headers={"X-Engine": engine.name, "X-Generation-Ms": str(elapsed_ms)},
+        headers={
+            "X-Engine": engine.name,
+            "X-Generation-Ms": str(elapsed_ms),
+            "X-Cache": "MISS",
+        },
     )

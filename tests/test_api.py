@@ -46,3 +46,14 @@ def test_rejects_empty_prompt():
 def test_rejects_too_long_prompt():
     r = client.post("/generate", json={"prompt": "a" * 201, "steps": 4, "seed": 1})
     assert r.status_code == 422
+
+
+def test_second_identical_request_is_a_cache_hit():
+    body = {"prompt": "cache test unique prompt", "steps": 2, "seed": 7}
+
+    first = client.post("/generate", json=body)
+    second = client.post("/generate", json=body)
+
+    assert first.headers["x-cache"] == "MISS"
+    assert second.headers["x-cache"] == "HIT"
+    assert first.content == second.content
