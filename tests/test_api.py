@@ -57,3 +57,18 @@ def test_second_identical_request_is_a_cache_hit():
     assert first.headers["x-cache"] == "MISS"
     assert second.headers["x-cache"] == "HIT"
     assert first.content == second.content
+
+
+def test_rate_limit_returns_429(monkeypatch):
+    from app import ratelimit
+
+    monkeypatch.setattr(ratelimit, "LIMIT", 3)
+    ratelimit.get_limiter.cache_clear()  # start with fresh counters
+
+    codes = []
+    for i in range(5):
+        body = {"prompt": f"rate limit test {i}", "steps": 1, "seed": i}
+        codes.append(client.post("/generate", json=body).status_code)
+
+    ratelimit.get_limiter.cache_clear()  # don't leave the low limit behind
+    assert codes == [200, 200, 200, 429, 429]

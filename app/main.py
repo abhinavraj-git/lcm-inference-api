@@ -7,6 +7,8 @@ from fastapi import FastAPI
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from app.cache import get_cache, make_key
+from fastapi import Request
+from app.ratelimit import get_limiter
 
 from app.engine import get_engine
 
@@ -25,7 +27,16 @@ def health():
 
 
 @app.post("/generate", response_class=Response)
-def generate(req: GenerateRequest):
+def generate(req: GenerateRequest, request: Request):
+    client_id = request.client.host if request.client else "unknown"
+    if not get_limiter().allow(client_id):
+        return Response(
+            content='{"detail":"Rate limit exceeded. Try again in a minute."}',
+            media_type="application/json",
+            status_code=429,
+            headers={"Retry-After": "60"},
+        )
+
     cache = get_cache()
     key = make_key(req.prompt, req.steps, req.seed)
 
